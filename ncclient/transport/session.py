@@ -13,16 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import re
-
-from Queue import Queue
 from threading import Thread, Lock, Event
 
+from ncclient import compat
 from ncclient.xml_ import *
 from ncclient.capabilities import Capabilities
-
-from errors import TransportError, SessionError
+from ncclient.transport.errors import TransportError, SessionError
 
 import logging
 logger = logging.getLogger('ncclient.transport.session')
@@ -39,7 +35,7 @@ class Session(Thread):
         self._listeners = set()
         self._lock = Lock()
         self.setName('session')
-        self._q = Queue()
+        self._q = compat.Queue()
         self._client_capabilities = capabilities
         self._server_capabilities = None # yet
         self._id = None # session-id
@@ -47,6 +43,7 @@ class Session(Thread):
         logger.debug('%r created: client_capabilities=%r' %
                      (self, self._client_capabilities))
         self._device_handler = None # Should be set by child class
+        self._notification_callback = None
 
     def _dispatch_message(self, raw):
         try:
@@ -62,7 +59,7 @@ class Session(Thread):
             listeners = list(self._listeners)
         for l in listeners:
             logger.debug('dispatching message to %r: %s' % (l, raw))
-            l.callback(root, raw) # no try-except; fail loudly if you must!
+            l.callback(root, compat.force_text(raw)) # no try-except; fail loudly if you must!
 
     def _dispatch_error(self, err):
         with self._lock:
@@ -91,8 +88,10 @@ class Session(Thread):
         self.send(HelloHandler.build(self._client_capabilities, self._device_handler))
         logger.debug('starting main loop')
         self.start()
-        # we expect server's hello message
-        init_event.wait()
+        # we expect server's hello message, if server doesn't responds in 60 seconds raise exception
+        init_event.wait(60)
+        if not init_event.is_set():
+            raise SessionError("Capability exchange timed out")
         # received hello message or an error happened
         self.remove_listener(listener)
         if error[0]:
@@ -135,6 +134,17 @@ class Session(Thread):
                 if isinstance(listener, cls):
                     return listener
 
+    def register_notification_callback(self, cbk):
+        """Registers a callback to receive Netconf Notifications.
+
+        The *cbk* should be a callable accepting an argument of class 
+        Notification. :seealso: :class:`ncclient.operations.Notification`.
+        Notifications are reported only after a successful create_subscription 
+        operation. Since Netconf Notifications are reported on a session basis,
+        the callback is tied to a session (rather than per subscription).
+        """
+        self._notification_callback = cbk 
+
     def connect(self, *args, **kwds): # subclass implements
         raise NotImplementedError
 
@@ -171,6 +181,12 @@ class Session(Thread):
     def id(self):
         """A string representing the `session-id`. If the session has not been initialized it will be `None`"""
         return self._id
+
+    @property
+    def notification_callback(self):
+        """Notification callback to which Netconf Notifications on the session
+        will be delivered"""
+        return self._notification_callback
 
 
 class SessionListener(object):
@@ -229,8 +245,10 @@ class HelloHandler(SessionListener):
             xml_namespace_kwargs = {}
         hello = new_ele("hello", **xml_namespace_kwargs)
         caps = sub_ele(hello, "capabilities")
-        def fun(uri): sub_ele(caps, "capability").text = uri
-        map(fun, capabilities)
+
+        for cap in capabilities:
+            sub_ele(caps, "capability").text = cap
+
         return to_xml(hello)
 
     @staticmethod

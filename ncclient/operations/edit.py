@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ncclient.operations import util
+from ncclient.operations.rpc import RPC
 from ncclient.xml_ import *
-
-from rpc import RPC
-
-import util
 
 import logging
 
@@ -55,15 +53,11 @@ class EditConfig(RPC):
         if default_operation is not None:
         # TODO: check if it is a valid default-operation
             sub_ele(node, "default-operation").text = default_operation
-# <<<<<<< HEAD
-#         node.append(validated_element(config, ("config", qualify("config"))))
-# =======
         if format == 'xml':
             node.append(validated_element(config, ("config", qualify("config"))))
         if format == 'text':
             config_text = sub_ele(node, "config-text")
             sub_ele(config_text, "configuration-text").text = config
-# >>>>>>> juniper
         return self._request(node)
 
 

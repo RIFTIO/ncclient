@@ -18,13 +18,13 @@ This module is a thin layer of abstraction around the library.
 It exposes all core functionality.
 """
 
-import capabilities
-import operations
-import transport
+from ncclient import capabilities
+from ncclient import compat
+from ncclient import operations
+from ncclient import transport
+from ncclient.xml_ import *
 
 import logging
-
-from ncclient.xml_ import *
 
 logger = logging.getLogger('ncclient.manager')
 
@@ -44,6 +44,7 @@ OPERATIONS = {
     "kill_session": operations.KillSession,
     "poweroff_machine": operations.PoweroffMachine,
     "reboot_machine": operations.RebootMachine,
+    "create_subscription": operations.CreateSubscription,
 }
 
 """
@@ -110,7 +111,8 @@ def connect_ssh(*args, **kwds):
     global VENDOR_OPERATIONS
     VENDOR_OPERATIONS.update(device_handler.add_additional_operations())
     session = transport.SSHSession(device_handler)
-    session.load_known_hosts()
+    if "hostkey_verify" not in kwds or kwds["hostkey_verify"]:
+        session.load_known_hosts()
 
     try:
        session.connect(*args, **kwds)
@@ -154,9 +156,8 @@ class OpExecutor(type):
         def make_wrapper(op_cls):
             def wrapper(self, *args, **kwds):
                 return self.execute(op_cls, *args, **kwds)
-            wrapper.func_doc = op_cls.request.func_doc
             return wrapper
-        for op_name, op_cls in OPERATIONS.iteritems():
+        for op_name, op_cls in compat.iteritems(OPERATIONS):
             attrs[op_name] = make_wrapper(op_cls)
         return super(OpExecutor, cls).__new__(cls, name, bases, attrs)
 
@@ -164,15 +165,14 @@ class OpExecutor(type):
         def make_wrapper(op_cls):
             def wrapper(self, *args, **kwds):
                 return self.execute(op_cls, *args, **kwds)
-            wrapper.func_doc = op_cls.request.func_doc
             return wrapper
         if VENDOR_OPERATIONS:
-            for op_name, op_cls in VENDOR_OPERATIONS.iteritems():
+            for op_name, op_cls in compat.iteritems(VENDOR_OPERATIONS):
                 setattr(cls, op_name, make_wrapper(op_cls))
         return super(OpExecutor, cls).__call__(*args, **kwargs)
 
 
-class Manager(object):
+class Manager(compat.with_metaclass(OpExecutor, object)):
 
     """
     For details on the expected behavior of the operations and their
@@ -191,8 +191,6 @@ class Manager(object):
         finally:
             m.close_session()
     """
-
-    __metaclass__ = OpExecutor
 
     def __init__(self, session, device_handler, timeout=30, *args, **kwargs):
         self._session = session
@@ -247,6 +245,17 @@ class Manager(object):
 
     def session(self):
         raise NotImplementedError
+
+    def register_notification_callback(self, cbk):
+        """Registers a callback to receive Netconf Notifications.
+
+        The *cbk* should be a callable accepting an argument of class 
+        Notification. :seealso: :class:`ncclient.operations.Notification`.
+        Notifications are reported only after a successful create_subscription 
+        operation. Since Netconf Notifications are reported on a session basis,
+        the callback is tied to a session (rather than per subscription).
+        """
+        self._session.register_notification_callback(cbk)
 
     def __getattr__(self, method):
         """Parse args/kwargs correctly in order to build XML element"""
