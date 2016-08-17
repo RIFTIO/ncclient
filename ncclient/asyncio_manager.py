@@ -178,8 +178,8 @@ def asyncio_connect(loop=None, *args, **kwargs):
     """
     loop = loop if loop is not None else asyncio.get_event_loop()
     mgr = yield from loop.run_in_executor(
-            executor=None,
-            callback=functools.partial(manager.connect, *args, **kwargs)
+            None,
+            functools.partial(manager.connect, *args, **kwargs)
             )
 
     return AsyncioManager(
