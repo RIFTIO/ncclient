@@ -64,9 +64,9 @@ def force_text(data):
     :return: text_type
     """
     if PY3 and isinstance(data, binary_type):
-        return data.decode('ascii', 'backslashreplace')
+        return data.decode('utf-8', 'backslashreplace')
     elif PY2 and isinstance(data, binary_type):
-        return data.decode('ascii', 'backslashreplace')
+        return data.decode('utf-8', 'backslashreplace')
     return data
 
 
