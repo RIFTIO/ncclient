@@ -50,9 +50,9 @@ def force_bytes(data):
     :return: binary_type
     """
     if PY3 and isinstance(data, string_types):
-        return data.encode('ascii')
+        return data.encode('utf-8')
     elif PY2 and isinstance(data, text_type):
-        return data.encode('ascii')
+        return data.encode('utf-8')
     return data
 
 
