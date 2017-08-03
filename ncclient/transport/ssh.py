@@ -78,7 +78,7 @@ class SSHSession(Session):
     def _parse(self):
         "Messages ae delimited by MSG_DELIM. The buffer could have grown by a maximum of BUF_SIZE bytes everytime this method is called. Retains state across method calls and if a byte has been read it will not be considered again."
         delim = MSG_DELIM
-        n = len(delim) - 1
+        n = len(delim)
         expect = self._parsing_state
         buf = self._buffer
         buf.seek(self._parsing_pos)
@@ -106,7 +106,7 @@ class SSHSession(Session):
                 buf.seek(0)
                 logger.debug('parsed new message')
                 self._dispatch_message(buf.read(msg_till).strip())
-                buf.seek(n+1, os.SEEK_CUR)
+                buf.seek(n, os.SEEK_CUR)
                 rest = buf.read()
                 buf = compat.BytesIO()
                 buf.write(rest)
